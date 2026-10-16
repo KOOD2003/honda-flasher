@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Honda ECU Flasher (WebUSB)</title>
+<style>
+:root{
+  --bg:#0f131a; --card:#171d27; --field:#1f2735; --line:#2c3748; --text:#e6eaf2; --muted:#8b97ab;
+  --accent:#3d8bff; --accent2:#7c5cff; --good:#2ecc71; --warn:#f5a524; --bad:#ff5d5d;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text); font-family:"Leelawadee UI","Tahoma",sans-serif;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+header{padding:18px 16px 6px}
+header h1{margin:0; font-size:20px; letter-spacing:.02em}
+header p{margin:4px 0 0; color:var(--muted); font-size:12.5px}
+.chip{float:right; font-weight:700; color:var(--muted); font-size:13px; max-width:60%; text-align:right}
+.wrap{display:grid; grid-template-columns:1fr; gap:14px; padding:12px 16px 24px; max-width:1100px; margin:0 auto}
+@media(min-width:880px){ .wrap{grid-template-columns:1fr 1fr} }
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px}
+.card > .t{font-size:11px; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:10px}
+.row{display:flex; gap:8px; flex-wrap:wrap}
+input[type=text]{
+  background:var(--field); border:1px solid var(--line); color:var(--text); border-radius:8px;
+  padding:8px 10px; font-size:14px; width:100%;
+}
+label.field{display:block; font-size:11.5px; color:var(--muted); margin-bottom:4px}
+.field-group{flex:1; min-width:100px}
+button{
+  font-family:inherit; font-weight:700; font-size:13.5px; border:none; border-radius:9px; padding:11px 16px;
+  cursor:pointer; color:#fff; background:var(--field);
+}
+button.primary{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+button.ghost{background:var(--field); color:var(--text)}
+button.danger{background:#b23a3a}
+button:disabled{opacity:.45; cursor:not-allowed}
+button:active:not(:disabled){transform:scale(.98)}
+.chk{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); margin:6px 0}
+.chk input{width:16px; height:16px}
+.banner{border-radius:10px; padding:12px 14px; font-weight:700; font-size:13.5px; background:var(--field); color:var(--muted)}
+.banner.busy{background:#26519f}
+.banner.ok{background:#1a9254}
+.banner.warn{background:#be7d14}
+.banner.bad{background:#c43a3a}
+#gauge{width:100%; height:190px; display:block}
+.stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:4px}
+.stats .k{font-size:11px; color:var(--muted)}
+.stats .v{font-size:16px; font-weight:700; margin-top:2px}
+.progress{height:18px; border-radius:9px; background:var(--field); overflow:hidden; position:relative; margin-top:10px}
+.progress .fill{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .2s}
+.progress .pct{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700}
+#log{
+  background:var(--field); border-radius:8px; padding:10px; font:11.5px/1.5 Consolas,monospace; height:230px;
+  overflow:auto; white-space:pre-wrap; word-break:break-word;
+}
+.small{font-size:11.5px; color:var(--muted)}
+.warnbox{background:#3a2a0f; border:1px solid #6a4a16; color:#ffce7a; border-radius:10px; padding:10px 12px; font-size:12.5px; margin:0 16px 10px}
+dialog{background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:14px; width:min(640px,94vw); padding:0}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.dlg-head{padding:14px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center}
+.dlg-body{padding:14px 16px; max-height:70vh; overflow:auto}
+pre.out{background:var(--field); border-radius:8px; padding:10px; font:11.5px/1.5 Consolas,monospace; white-space:pre-wrap; word-break:break-word}
+input[type=file]{display:none}
+a.filebtn{display:inline-block}
+.footer-note{padding:0 16px 24px; color:var(--muted); font-size:11.5px; max-width:1100px; margin:0 auto}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="chip" id="chip">ยังไม่ได้เชื่อมต่อ ECU</span>
+  <h1>HONDA ECU FLASHER <span class="small">· WebUSB</span></h1>
+  <p>K-line · Keihin / Shindengen · FTDI ผ่าน WebUSB (ไม่ใช่ D2XX) · ต้องใช้ Chrome/Edge</p>
+</header>
+
+<div class="warnbox" id="usbWarn" style="display:none">
+  เบราว์เซอร์นี้ไม่รองรับ WebUSB กรุณาเปิดด้วย <b>Chrome หรือ Edge</b> (บนมือถือ Android ต้องใช้ Chrome + สาย OTG) ผ่าน HTTPS เท่านั้น ใช้งานไม่ได้บน iOS Safari และ Firefox
+</div>
+<div class="warnbox">
+  ⚠️ ส่วนเชื่อมต่อ FTDI ผ่าน WebUSB เขียนขึ้นใหม่จากเอกสารโปรโตคอลของ FTDI โดยไม่ได้ใช้ไดรเวอร์ D2XX ทางการ <b>ยังไม่เคยทดสอบกับฮาร์ดแวร์จริง</b> ต่างจากตรรกะการอัดแฟลช (checksum/เฟรม/ลำดับคำสั่ง) ที่ผ่านการทดสอบกับ ECU จำลองแล้ว — เริ่มจากกล่องสำรอง ปุ่ม "อ่าน ECM ID" และเปิด trace ก่อนเสมอ
+</div>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="t">ไฟล์ .BIN</div>
+    <div class="row">
+      <button class="primary" id="btnFile">เลือกไฟล์...</button>
+      <input type="file" id="fileInput" accept=".bin">
+      <span class="small" id="fileName" style="align-self:center">ยังไม่ได้เลือกไฟล์</span>
+    </div>
+    <p class="small" id="fileInfo" style="margin:10px 0 4px"></p>
+    <p class="small" id="fileModel" style="margin:0 0 10px"></p>
+    <button class="ghost" id="btnTools">เครื่องมือไฟล์ (เทียบ/ส่งออก)...</button>
+  </div>
+
+  <div class="card">
+    <div class="t">ตั้งค่า</div>
+    <div class="row">
+      <div class="field-group"><label class="field">Start (hex)</label><input type="text" id="start"></div>
+      <div class="field-group"><label class="field">Checksum offset (hex)</label><input type="text" id="ck"></div>
+      <div class="field-group" style="flex:2"><label class="field">ต้องตรงกับ ECM ID (ไม่บังคับ)</label><input type="text" id="expect" placeholder="เช่น 0101880D01"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="fast" checked> โหมดเร็ว (Fast write) - Keihin 62500 baud / ตัด delay Shindengen</label>
+    <label class="chk"><input type="checkbox" id="recovery"> Recovery key (Shindengen) - ID ลงท้าย 0000 ใช้ให้อัตโนมัติ</label>
+    <label class="chk"><input type="checkbox" id="manual"> ใช้ offset ตามช่องที่กรอก (ไม่ดึงจากฐานข้อมูล ECM ID)</label>
+    <label class="chk"><input type="checkbox" id="sim"> จำลอง ECU (ทดสอบ ไม่ต้องต่อสาย)</label>
+    <label class="chk"><input type="checkbox" id="trace"> แสดงเฟรมที่ส่ง/รับ (trace)</label>
+  </div>
+
+  <div class="card">
+    <div class="t">คำสั่ง</div>
+    <div class="row">
+      <button class="ghost" id="btnScan">1) อ่าน ECM ID</button>
+      <button class="primary" id="btnWrite">2) ลบ + เขียนแฟลช</button>
+      <button class="ghost" id="btnVerify">3) ตรวจหลังเขียน</button>
+      <button class="ghost" id="btnStop" disabled>หยุด</button>
+    </div>
+    <p class="small" id="estimate" style="margin:10px 0 0">ประมาณเวลาเขียน: -</p>
+    <div style="margin-top:10px"><div class="banner" id="banner">พร้อมใช้งาน - เลือกไฟล์ .bin แล้วกด "อ่าน ECM ID" ก่อนเสมอ</div></div>
+  </div>
+
+  <div class="card">
+    <div class="t">ข้อมูลการเขียนล่าสุด</div>
+    <p class="small" id="lastInfo" style="white-space:pre-line">ยังไม่มีประวัติการเขียน</p>
+  </div>
+
+  <div class="card">
+    <div class="t">ความเร็วในการอัด</div>
+    <canvas id="gauge"></canvas>
+    <div class="stats">
+      <div><div class="k">เขียนแล้ว</div><div class="v" id="sent">-</div></div>
+      <div><div class="k">เวลาที่ใช้</div><div class="v" id="elapsed">00:00</div></div>
+      <div><div class="k">เหลืออีก (ประมาณ)</div><div class="v" id="eta">--:--</div></div>
+    </div>
+    <div class="progress"><div class="fill" id="bar"></div><div class="pct" id="barPct">0%</div></div>
+  </div>
+
+  <div class="card">
+    <div class="t">บันทึกการทำงาน</div>
+    <div id="log"></div>
+    <div class="row" style="margin-top:8px"><button class="ghost" id="btnLogClear">ล้าง log</button></div>
+  </div>
+
+</div>
+
+<p class="footer-note">
+  วางไฟล์นี้กับ <code>ecm_offsets.csv</code> ไว้โฟลเดอร์เดียวกันแล้วเสิร์ฟผ่าน HTTPS (WebUSB ต้องใช้ secure context)
+  ต่อสาย FTDI กับโทรศัพท์ผ่าน USB OTG แล้วเปิดหน้านี้ด้วย Chrome บน Android กดปุ่ม "อ่าน ECM ID" เบราว์เซอร์จะถามสิทธิ์เข้าถึง USB ให้เลือกอุปกรณ์ FTDI
+</p>
+
+<dialog id="toolsDlg">
+  <div class="dlg-head"><b>เครื่องมือไฟล์ .bin</b><button class="ghost" id="btnCloseTools">ปิด</button></div>
+  <div class="dlg-body">
+    <div class="t" style="margin-top:0">ส่งออกไฟล์ที่แก้ checksum แล้ว (ใช้ไฟล์ที่เลือกไว้ในหน้าหลัก)</div>
+    <button class="primary" id="btnExport">ส่งออก .bin ที่แก้แล้ว</button>
+
+    <div class="t" style="margin-top:18px">เทียบ 2 ไฟล์ .bin</div>
+    <div class="row">
+      <div class="field-group"><label class="field">ไฟล์ A</label><input type="file" id="diffA" style="display:block"></div>
+      <div class="field-group"><label class="field">ไฟล์ B</label><input type="file" id="diffB" style="display:block"></div>
+    </div>
+    <button class="ghost" id="btnDiff" style="margin-top:8px">เทียบไฟล์</button>
+    <pre class="out" id="diffOut" style="margin-top:10px; min-height:40px"></pre>
+
+    <div class="t" style="margin-top:18px">ทดสอบตรรกะโปรโตคอล (ตัวจำลอง ECU ในเบราว์เซอร์)</div>
+    <button class="ghost" id="btnSelftest">รัน self-test</button>
+    <pre class="out" id="testOut" style="margin-top:10px; min-height:40px"></pre>
+  </div>
+</dialog>
+
+<script>
+/* ============================================================
+   HondaProto - checksum/detect/prepare-image core
+   (ทดสอบแล้วด้วย Node: 33/33 ผ่าน ให้ผลตรงกับเวอร์ชัน C#/Python)
+   ============================================================ */
+</script>
+<script>
+// Honda ECU flasher protocol core - ported 1:1 from the already-tested C#/Python version.
+// Pure logic, no I/O. Works in Node (for testing) and in the browser (for the real page).
+(function (root) {
+  'use strict';
+
+  const SH_BIN_SIG = [0x5A, 0x5A, 0x5A, 0x5A];
+  const KH_H8C_SIG = [0xFF, 0xFF, 0xAA, 0xAA];
+  const KH_M32R_SIG = [0xFF, 0xFF, 0xFF, 0xAA, 0xAA, 0xAA, 0xAA];
+  const KH_RH850_SIG = [0xFF, 0xFF, 0xFF, 0, 0, 0, 0];
+  const KH_MPC560_SIG = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+  const KH_SH705X_SIG = KH_M32R_SIG;
+  const SH_W_KEYSIG = [17, 18, 19, 20, 21, 21, 23];
+  const SH_R_KEYSIG = [145, 145, 13, 0, 158, 141];
+  const SH_V850 = [0x53, 0x56, 0x38, 0x35, 0x30];   // "SV850"
+  const SH_RH850 = [0x53, 0x48, 0x38, 0x35, 0x30];  // "SH850"
+  const SH_START0 = [165, 165, 165, 165, 0];
+
+  const Ecu = { KEIHIN_OTHER: 0, KEIHIN_H8C: 1, KEIHIN_M32R: 2, SH_V850: 3, SH_RH850: 4, SH_RH850B: 5 };
+  const ecuName = ['KeihinOther', 'KeihinH8C', 'KeihinM32R', 'ShV850', 'ShRh850', 'ShRh850B'];
+  function isSh(e) { return e >= Ecu.SH_V850; }
+
+  class FlashError extends Error { }
+
+  function find(h, p, from) {
+    from = from || 0;
+    outer: for (let i = from; i + p.length <= h.length; i++) {
+      for (let k = 0; k < p.length; k++) if (h[i + k] !== p[k]) continue outer;
+      return i;
+    }
+    return -1;
+  }
+  function match(h, at, p) {
+    if (at < 0 || at + p.length > h.length) return false;
+    for (let k = 0; k < p.length; k++) if (h[at + k] !== p[k]) return false;
+    return true;
+  }
+  function tailIs(b, sig) { return b.length >= sig.length && match(b, b.length - sig.length, sig); }
+
+  function sum8(d, start, n) { let s = 0; for (let i = start; i < start + n; i++) s += d[i]; return s & 255; }
+  function csumCarry(d, start, n) { let s = 0; for (let i = start; i < start + n; i++) s += d[i]; return (255 - ((s - 1) >> 8)) & 255; }
+  function csumHonda(d, start, n) { let s = 0; for (let i = start; i < start + n; i++) s += d[i]; return ((s ^ 255) + 1) & 255; }
+  function sum32(d, start, n) {
+    let s = 0, end = start + n;
+    while (start + 4 <= end) {
+      const word = (d[start] | (d[start + 1] << 8) | (d[start + 2] << 16) | (d[start + 3] << 24)) >>> 0;
+      s = (s + word) >>> 0;
+      start += 4;
+    }
+    return s >>> 0;
+  }
+
+  function detect(b) {
+    const n = b.length;
+    if (tailIs(b, SH_BIN_SIG)) {
+      const wk = find(b, SH_W_KEYSIG) >= 0;
+      const iv = find(b, SH_V850), ir = find(b, SH_RH850);
+      if (iv >= 0 && (ir < 0 || iv < ir)) return { ecu: Ecu.SH_V850, start: 0x10000 };
+      if (ir >= 0) {
+        if (n > 40965 && match(b, 40960, SH_START0)) return { ecu: Ecu.SH_RH850B, start: 0xA000 };
+        return { ecu: Ecu.SH_RH850, start: 0x10000 };
+      }
+      if (wk) return { ecu: Ecu.SH_V850, start: 0x10000 };
+    }
+    if ((n === 0x8000 || n === 0xE000) && tailIs(b, KH_H8C_SIG)) return { ecu: Ecu.KEIHIN_H8C, start: null };
+    if (n === 0x40000 && tailIs(b, KH_M32R_SIG)) return { ecu: Ecu.KEIHIN_M32R, start: null };
+    return { ecu: Ecu.KEIHIN_OTHER, start: null };
+  }
+
+  // {start, checksum} เดาจากขนาด+ลายเซ็น (ตรงกับ GetOffsetsFromBinType) ; null = ต้องใช้ฐานข้อมูล ECM ID
+  function sizeFallback(b) {
+    const n = b.length;
+    if (n === 0xC000) return [0x4000, 0x7600];
+    if (n === 0xE000) return [0x0000, 0xDFEF];
+    if (n === 0x10000 || n === 0x18000) return [0x8000, 0x0000];
+    if (n === 0x20000) return [0xE0000, 0xB000];
+    if (n >= 0x40000 && !tailIs(b, SH_BIN_SIG)) {
+      if (n === 0x40000 && tailIs(b, KH_RH850_SIG)) return [0x0000, 0x3FFF8];
+      if (n === 0x80000) return tailIs(b, KH_MPC560_SIG) ? [0x0000, 0x7FFF8] : null;
+      if (n === 0x100000) return tailIs(b, KH_SH705X_SIG) ? [0x0000, 0xFFFF8] : [0x0000, 0x7FFF8];
+    }
+    return null;
+  }
+
+  function keihinExpected(b, off) {
+    const s = off === 0 ? sum8(b, 1, b.length - 1) : (sum8(b, 0, off) + sum8(b, off + 1, b.length - (off + 1))) & 255;
+    return (256 - s) & 255;
+  }
+
+  function shindengenAutoChecksum(b) {
+    for (let i = find(b, SH_W_KEYSIG); i >= 0 && i < b.length - SH_W_KEYSIG.length; i = find(b, SH_W_KEYSIG, i + 1)) {
+      for (let j = i + SH_W_KEYSIG.length; j < b.length - 6; j++) {
+        if (b[j] === 0xD0 && b[j + 1] === 0x07) {
+          const num = (j % 4 === 2) ? j - 6 : j;
+          const tot = (sum32(b, 0, num - 4) + sum32(b, num, b.length - num)) >>> 0;
+          const w = ((0 - tot) >>> 0);
+          b[num - 4] = w & 255; b[num - 3] = (w >>> 8) & 255; b[num - 2] = (w >>> 16) & 255; b[num - 1] = (w >>> 24) & 255;
+          return num - 4;
+        }
+      }
+    }
+    return -1;
+  }
+
+  function keyFromParams(b, p, seed) {
+    const a = b[p] | (b[p + 1] << 8);
+    const bb = b[p + 2] | (b[p + 3] << 8);
+    const c = b[p + 4] | (b[p + 5] << 8);
+    const s = (seed[0] << 8) | seed[1];
+    const t = (bb * (s + a)) & 0xFFFF;
+    const k = (t + (c > 0 ? s % c : s)) & 0xFFFF;
+    return [k >> 8, k & 0xFF];
+  }
+  function shWriteKey(b, seed) {
+    for (let i = find(b, SH_W_KEYSIG); i >= 0 && i < b.length - SH_W_KEYSIG.length; i = find(b, SH_W_KEYSIG, i + 1))
+      for (let j = i + SH_W_KEYSIG.length; j < b.length - 10; j++)
+        if (b[j + 8] === 0xEE && (b[j + 9] === 0x00 || b[j + 9] === 0xFF)) return keyFromParams(b, j, seed);
+    return null;
+  }
+  function shRecoveryKey(b, seed) {
+    for (let i = 0; i + 6 + SH_R_KEYSIG.length <= b.length; i++)
+      if (match(b, i + 6, SH_R_KEYSIG)) return keyFromParams(b, i, seed);
+    return null;
+  }
+
+  function isBlank(b, at, n) { for (let i = 0; i < n; i++) if (b[at + i] !== 0xFF) return false; return true; }
+
+  function headerText(b) {
+    const n = Math.min(32, b.length);
+    let best = '', cur = '';
+    for (let i = 0; i <= n; i++) {
+      const c = i < n ? b[i] : -1;
+      if (c >= 0x20 && c < 0x7F) cur += String.fromCharCode(c);
+      else { if (cur.length > best.length) best = cur; cur = ''; }
+    }
+    best = best.trim();
+    return best.length >= 5 ? best : '';
+  }
+
+  function modelHint(image, part) {
+    const head = headerText(image);
+    if (!head || !part) return -1;
+    const t = part.split(/[- ]+/).filter(Boolean);
+    if (t.length < 3 || t[1].length < 3) return -1;
+    return head.toUpperCase().includes(t[1].toUpperCase()) ? 1 : 0;
+  }
+
+  // ตรวจชนิด + แก้ checksum ; start/ck = null ให้ใช้ค่าอัตโนมัติ ; คืน {data, ecu, start, checksum, nonBlankBlocks}
+  function prepareImage(raw, start, ck) {
+    const b = new Uint8Array(raw);
+    const det = detect(b);
+    const ecu = det.ecu;
+    let out = { data: b, ecu };
+    if (isSh(ecu)) {
+      const off = shindengenAutoChecksum(b);
+      if (off < 0) throw new FlashError('ไฟล์ Shindengen: ไม่พบจุด checksum/ลายเซ็นคีย์');
+      if (!shWriteKey(b, [0, 0])) throw new FlashError('ไฟล์ Shindengen: ไม่พบพารามิเตอร์คีย์');
+      out.start = start != null ? start : det.start;
+      out.checksum = 'auto @ 0x' + off.toString(16).toUpperCase();
+    } else {
+      const d = sizeFallback(b);
+      if (start == null && d) start = d[0];
+      if (ck == null && d) ck = d[1];
+      if (start == null || ck == null || ck >= b.length)
+        throw new FlashError('หา Start/Checksum offset ไม่ได้ (ECM ID ไม่อยู่ในฐานข้อมูล และขนาด/ลายเซ็นไฟล์ไม่รู้จัก) - กรอกเอง (hex)');
+      b[ck] = keihinExpected(b, ck);
+      out.start = start;
+      out.checksum = '0x' + ck.toString(16).toUpperCase();
+    }
+    const blk = ecu === Ecu.KEIHIN_H8C ? 64 : 128;
+    if (b.length % blk !== 0) throw new FlashError('ขนาดไฟล์ ' + b.length + ' ไม่หาร ' + blk + ' ลงตัว');
+    if (isSh(ecu) && (out.start < 0 || out.start > b.length)) throw new FlashError('Start offset เกินขนาดไฟล์');
+    out.nonBlankBlocks = 0;
+    for (let k = isSh(ecu) ? out.start : 0; k < b.length; k += blk) if (!isBlank(b, k, blk)) out.nonBlankBlocks++;
+    return out;
+  }
+
+  function describe(raw) {
+    const det = detect(raw);
+    const d = sizeFallback(raw);
+    let s = (raw.length / 1024).toFixed(1).replace(/\.0$/, '') + ' KB  •  ' + ecuName[det.ecu];
+    if (isSh(det.ecu)) s += '  •  start ' + det.start.toString(16).toUpperCase() + ' / checksum auto';
+    else if (d) s += '  •  start ' + d[0].toString(16).toUpperCase() + ' / ck ' + d[1].toString(16).toUpperCase() + ' (เดาจากขนาด)';
+    else s += '  •  ต้องใช้ฐานข้อมูล ECM ID หรือกรอก offset เอง';
+    return s;
+  }
+
+  const out = {
+    Ecu, ecuName, isSh, FlashError,
+    SH_BIN_SIG, KH_H8C_SIG, KH_M32R_SIG, KH_RH850_SIG, KH_MPC560_SIG, KH_SH705X_SIG,
+    SH_V850, SH_RH850,
+    find, match, sum8, csumCarry, csumHonda, sum32,
+    detect, sizeFallback, keihinExpected, shindengenAutoChecksum, keyFromParams,
+    shWriteKey, shRecoveryKey, isBlank, headerText, modelHint, prepareImage, describe,
+  };
+  if (typeof module !== 'undefined') module.exports = out; else root.HondaProto = out;
+})(typeof module !== 'undefined' ? global : window);
+
+</script>
+<script>
+(function (root) {
+  'use strict';
+  const P = root.HondaProto || (typeof require !== 'undefined' ? require('./protocol.js') : undefined);
+  const Ecu = P.Ecu, csumHonda = P.csumHonda, csumCarry = P.csumCarry;
+
+  const KEEP_72 = [0x72, 5, 0, 0xF0, 0x99];
+  const KEEP_K = [0x7E, 6, 1, 1, 0, 0x7A];
+  const ID_REQ = [0x72, 7, 0x72, 0, 0, 5, 0x10];
+  const FAST_REQ = [0xFF, 0x25, 0, 0x20, 0x7C, 0];
+  const MAX_TIMEOUT_RETRIES = 5;
+
+  function hex(b, from, n) { return Array.from(b.slice(from, from + n)).map(x => x.toString(16).padStart(2, '0')).join(' '); }
+
+  // ---- K-line: ส่งเฟรม รอ echo+คำตอบ ตรวจ checksum ----
+  class KLine {
+    constructor(tr, opts) { this.tr = tr; this.trace = (opts && opts.trace) || null; this.sleep = (opts && opts.sleep) || (ms => new Promise(r => setTimeout(r, ms))); }
+
+    async send(cmd, sleepMs) {
+      cmd = Uint8Array.from(cmd);
+      await this.tr.write(cmd);
+      if (sleepMs) await this.sleep(sleepMs);
+      const limit = 50 + 2 * cmd.length;
+      const t0 = Date.now();
+      let buf = [], rlen = 0;
+      while (Date.now() - t0 < limit) {
+        const d = await this.tr.readAvailable();
+        if (d && d.length) buf = buf.concat(Array.from(d));
+        if (buf.length >= cmd.length + 2) {
+          if (!rlen) rlen = buf[cmd.length + 1];
+          if (buf.length - cmd.length === rlen && rlen >= 4) {
+            const rep = buf.slice(buf.length - rlen);
+            if (csumHonda(rep, 0, rlen - 1) === rep[rlen - 1]) {
+              await this.tr.purge();
+              if (this.trace) this.trace('> ' + hex(cmd, 0, Math.min(12, cmd.length)) + (cmd.length > 12 ? ' ..' : '') + '   < ' + hex(rep, 0, rep.length));
+              return rep;
+            }
+          }
+        }
+        await new Promise(r => setTimeout(r, 2));
+      }
+      await this.tr.purge();
+      if (this.trace) this.trace('> ' + hex(cmd, 0, Math.min(12, cmd.length)) + '   < (ไม่มีคำตอบ)');
+      return null;
+    }
+  }
+
+  async function scan(link) {
+    await link.send([0xFE, 4, 0x72, 0x8C]);
+    let keep = KEEP_72;
+    if (!(await link.send(KEEP_72))) {
+      const r0 = await link.send(KEEP_K);
+      if (r0 && r0[3] !== 15) keep = KEEP_K;
+    }
+    if (!(await link.send(keep.slice(0, keep[1])))) return null;
+    const info = { id: '-', flashCount: '-' };
+    const r = await link.send(ID_REQ);
+    if (r && r.length >= 10) info.id = hex(r, 5, 5).replace(/ /g, '').toUpperCase();
+    for (const q of [[0x7D, 6, 1, 1, 3, 0x78], [0x7B, 6, 2, 1, 3, 0x79]]) {
+      const rr = await link.send(q);
+      if (rr && rr.length > 6) { info.flashCount = String(rr[6]); break; }
+    }
+    return info;
+  }
+
+  function cmd5(hdr, sub, c) { const f = [hdr, 5, sub, c, 0]; f[4] = csumHonda(f, 0, 4); return f; }
+
+  class Flasher {
+    constructor(link, image, ecu, start, opts) {
+      this.l = link; this.img = Uint8Array.from(image); this.ecu = ecu; this.start = start;
+      opts = opts || {};
+      this.fast = !!opts.fast; this.recovery = !!opts.recovery;
